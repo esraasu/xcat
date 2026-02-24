@@ -123,3 +123,148 @@ tail -f /var/log/messages
 Look for DHCP, TFTP, and xCAT provisioning logs.
 
 
+------------------------------------------------------------------------
+
+## 1️⃣ Wrong next-server Generated from Dynamic Range (Critical)
+
+### Symptom
+
+During PXE boot:
+
+Next server: 192.168.100.150\
+tftp://192.168.100.150/pxelinux.0 ... Connection timed out
+
+
+### Root Cause
+
+Dynamic DHCP range was:
+
+192.168.100.150 - 192.168.100.200
+
+xCAT network object did NOT explicitly define:
+
+-   dhcpserver
+-   tftpserver
+-   nameservers
+
+xCAT auto-selected the first IP in the range (192.168.100.150),
+generating:
+
+next-server 192.168.100.150;
+
+### Fix
+
+Explicitly define DHCP/TFTP server and regenerate config:
+
+source /etc/profile.d/xcat.sh
+
+chdef -t network 192_168_100_0-255_255_255_0 dhcpserver=192.168.100.155\
+chdef -t network 192_168_100_0-255_255_255_0 tftpserver=192.168.100.155\
+chdef -t network 192_168_100_0-255_255_255_0 nameservers=192.168.100.155
+
+makedhcp -n\
+systemctl restart dhcpd
+
+Verify:
+
+grep next-server /etc/dhcp/dhcpd.conf
+
+Must show:
+
+next-server 192.168.100.155;
+
+------------------------------------------------------------------------
+
+## 2️⃣ installstatus netbooting invalid (Port 3002 Error)
+
+### Symptom
+
+fatal: remote host and port information (3002, installstatus netbooting)
+invalid
+
+### Root Cause
+
+Provisioning NIC was configured using:
+
+ip addr add
+
+NetworkManager removed the temporary IP after reboot.\
+xcatd became unreachable.
+
+### Fix
+
+Always configure provisioning NIC using NetworkManager:
+
+nmcli con mod "System eth1" ipv4.method manual ipv4.addresses
+192.168.100.155/24 ipv6.method ignore
+
+nmcli con up "System eth1"
+
+Never use temporary ip addr add for provisioning networks.
+
+------------------------------------------------------------------------
+
+## 3️⃣ Node Definition Missing groups Attribute
+
+### Symptom
+
+Attribute 'groups' is not specified for node 'node01'
+
+### Root Cause
+
+node01 existed without:
+
+groups=compute
+
+xCAT provisioning requires node group membership.
+
+### Fix
+
+Ensure node is defined properly:
+
+mkdef -t node node01 groups=compute ip=192.168.100.101
+mac=52:54:00:19:05:04 netboot=pxe
+
+------------------------------------------------------------------------
+
+## 4️⃣ Kernel Blocked by TFTP Mapfile
+
+### Problem
+
+xCAT blocks file named "kernel" due to tftpmapfile4xcat.conf.
+
+### Fix
+
+Copy kernel as vmlinuz instead of using symlink:
+
+cp kernel /tftpboot/xcat/vmlinuz\
+cp initrd-stateless.gz /tftpboot/xcat/initrd-stateless.gz
+
+Avoid symlinks.
+
+------------------------------------------------------------------------
+
+## 5️⃣ CentOS 7 Repository Failure (EOL)
+
+### Symptom
+
+Could not retrieve mirrorlist
+
+### Root Cause
+
+CentOS 7 is End-of-Life.
+
+### Fix
+
+Switch to CentOS Vault:
+
+sed -i 's\|mirrorlist=\|#mirrorlist=\|g'
+/etc/yum.repos.d/CentOS-Base.repo\
+sed -i
+'s\|#baseurl=http://mirror.centos.org\|baseurl=http://vault.centos.org\|g'
+/etc/yum.repos.d/CentOS-Base.repo\
+yum clean all\
+yum makecache
+
+
+
