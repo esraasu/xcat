@@ -122,8 +122,9 @@ tail -f /var/log/messages
 
 Look for DHCP, TFTP, and xCAT provisioning logs.
 
-
 ------------------------------------------------------------------------
+
+# Troubleshooting & Issues Encountered
 
 ## 1️⃣ Wrong next-server Generated from Dynamic Range (Critical)
 
